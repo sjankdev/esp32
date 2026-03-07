@@ -54,6 +54,12 @@ bool previousObstacle = false;
 bool silentMode = false;
 bool lastButtonState = HIGH;
 unsigned long lastDebounceTime = 0;
+bool buttonPressed = false;
+unsigned long buttonPressStart = 0;
+const unsigned long DEBOUNCE_MS = 80;
+const unsigned long LONG_PRESS_MS = 1500;
+
+uint8_t currentPage = 1;
 
 String getTimeString();
 void initDisplay();
@@ -94,14 +100,41 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  int buttonState = digitalRead(BUTTON_PIN);
-  if (buttonState == LOW && lastButtonState == HIGH && (now - lastDebounceTime) > 80) {
-    silentMode = !silentMode;
+  int reading = digitalRead(BUTTON_PIN);
+
+  if (reading != lastButtonState) {
     lastDebounceTime = now;
-    Serial.print("Button pressed, silentMode=");
-    Serial.println(silentMode ? "LED only" : "LED+buzzer");
   }
-  lastButtonState = buttonState;
+
+  if ((now - lastDebounceTime) > DEBOUNCE_MS) {
+
+    if (reading == LOW && !buttonPressed) {
+
+      buttonPressed = true;
+      buttonPressStart = now;
+    }
+
+    if (reading == HIGH && buttonPressed) {
+
+      buttonPressed = false;
+      unsigned long pressDuration = now - buttonPressStart;
+
+      if (pressDuration >= LONG_PRESS_MS) {
+
+        currentPage++;
+        if (currentPage > 3) currentPage = 1;
+        Serial.print("Long press, page=");
+        Serial.println(currentPage);
+      } else {
+
+        silentMode = !silentMode;
+        Serial.print("Short press, silentMode=");
+        Serial.println(silentMode ? "LED only" : "LED+buzzer");
+      }
+    }
+  }
+
+  lastButtonState = reading;
 
   if (now - lastUpdateMs >= updateEvery) {
     lastUpdateMs = now;
@@ -264,48 +297,94 @@ void updateDisplay() {
   display.clearDisplay();
   display.setTextSize(1);
 
-  display.setCursor(0, 0);
-  display.print("Time: ");
-  display.println(getTimeString());
+  if (currentPage == 1) {
 
-  display.setCursor(0, 16);
-  display.print("T:");
-  if (isnan(lastTemp) || sampleCount == 0) {
-    display.println("--");
-  } else {
-    float avgT = sumTemp / sampleCount;
-    display.print(lastTemp, 1);
-    display.print(" minT:");
-    display.print(minTemp, 1);
-    display.print(" maxT:");
-    display.print(maxTemp, 1);
-    display.print(" pT:");
-    display.print(avgT, 1);
-    display.println("C");
-  }
+    display.setCursor(0, 0);
+    display.print("Time: ");
+    display.println(getTimeString());
 
-  display.setCursor(0, 32);
-  display.print("V:");
-  if (isnan(lastHumidity) || sampleCount == 0) {
-    display.println("--");
-  } else {
-    float avgH = sumHumidity / sampleCount;
-    display.print(lastHumidity, 1);
-    display.print(" minV:");
-    display.print(minHumidity, 1);
-    display.print(" maxV:");
-    display.print(maxHumidity, 1);
-    display.print(" pV:");
-    display.print(avgH, 1);
+    display.setCursor(0, 16);
+    display.print("T:");
+    if (isnan(lastTemp)) {
+      display.print("--");
+    } else {
+      display.print(lastTemp, 1);
+    }
+    display.print("C  V:");
+    if (isnan(lastHumidity)) {
+      display.print("--");
+    } else {
+      display.print(lastHumidity, 1);
+    }
     display.println("%");
-  }
 
-  display.setCursor(0, 48);
-  display.print("Obs:");
-  display.print(lastObstacle ? "YES " : "NO  ");
-  display.print("Cnt:");
-  display.print(obstacleCount);
-  display.println(silentMode ? " L" : " B");
+    display.setCursor(0, 32);
+    display.print("Obs:");
+    display.print(lastObstacle ? "YES " : "NO  ");
+    display.print("Cnt:");
+    display.println(obstacleCount);
+
+    display.setCursor(0, 48);
+    display.print("Mode:");
+    display.print(silentMode ? "LED " : "BUZ3");
+    display.print(" Pg:");
+    display.println(currentPage);
+
+  } else if (currentPage == 2) {
+
+    display.setCursor(0, 0);
+    display.println("Stats T/V");
+
+    if (sampleCount == 0) {
+      display.setCursor(0, 16);
+      display.println("No data yet");
+    } else {
+      float avgT = sumTemp / sampleCount;
+      float avgH = sumHumidity / sampleCount;
+
+      display.setCursor(0, 16);
+      display.print("T mn:");
+      display.print(minTemp, 1);
+      display.print(" mx:");
+      display.print(maxTemp, 1);
+
+      display.setCursor(0, 32);
+      display.print("T avg:");
+      display.print(avgT, 1);
+      display.println("C");
+
+      display.setCursor(0, 48);
+      display.print("V mn:");
+      display.print(minHumidity, 1);
+      display.print(" mx:");
+      display.print(maxHumidity, 1);
+      display.print(" a:");
+      display.print(avgH, 1);
+      display.println("%");
+    }
+  } else {
+
+    display.setCursor(0, 0);
+    display.println("Debug/info");
+
+    display.setCursor(0, 16);
+    display.print("Obs:");
+    display.print(lastObstacle ? "YES " : "NO  ");
+    display.print("Cnt:");
+    display.println(obstacleCount);
+
+    display.setCursor(0, 32);
+    display.print("Mode:");
+    display.println(silentMode ? "LED" : "BUZ3");
+
+    display.setCursor(0, 48);
+    if (WiFi.status() == WL_CONNECTED) {
+      display.print("WiFi OK ");
+      display.print(WiFi.localIP());
+    } else {
+      display.print("WiFi OFF");
+    }
+  }
 
   display.display();
-};
+}
