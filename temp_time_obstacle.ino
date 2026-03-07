@@ -39,6 +39,14 @@ float lastTemp = NAN;
 float lastHumidity = NAN;
 bool lastObstacle = false;
 
+float minTemp = NAN;
+float maxTemp = NAN;
+float sumTemp = 0.0;
+float minHumidity = NAN;
+float maxHumidity = NAN;
+float sumHumidity = 0.0;
+unsigned long sampleCount = 0;
+
 unsigned long obstacleCount = 0;
 bool previousObstacle = false;
 
@@ -178,6 +186,24 @@ void readSensors() {
   } else {
     lastTemp = t;
     lastHumidity = h;
+
+    sampleCount++;
+    if (sampleCount == 1) {
+      minTemp = t;
+      maxTemp = t;
+      sumTemp = t;
+      minHumidity = h;
+      maxHumidity = h;
+      sumHumidity = h;
+    } else {
+      if (t < minTemp) minTemp = t;
+      if (t > maxTemp) maxTemp = t;
+      sumTemp += t;
+
+      if (h < minHumidity) minHumidity = h;
+      if (h > maxHumidity) maxHumidity = h;
+      sumHumidity += h;
+    }
   }
 
   int rawObstacle = digitalRead(OBSTACLE_PIN);
@@ -216,29 +242,42 @@ void updateDisplay() {
   display.println(getTimeString());
 
   display.setCursor(0, 16);
-  display.print("Temp: ");
-  if (isnan(lastTemp)) {
-    display.println("--.- C");
+  display.print("T:");
+  if (isnan(lastTemp) || sampleCount == 0) {
+    display.println("--");
   } else {
+    float avgT = sumTemp / sampleCount;
     display.print(lastTemp, 1);
-    display.println(" C");
+    display.print(" minT:");
+    display.print(minTemp, 1);
+    display.print(" maxT:");
+    display.print(maxTemp, 1);
+    display.print(" pT:");
+    display.print(avgT, 1);
+    display.println("C");
   }
 
   display.setCursor(0, 32);
-  display.print("Vlaga: ");
-  if (isnan(lastHumidity)) {
-    display.println("--.- %");
+  display.print("V:");
+  if (isnan(lastHumidity) || sampleCount == 0) {
+    display.println("--");
   } else {
+    float avgH = sumHumidity / sampleCount;
     display.print(lastHumidity, 1);
-    display.println(" %");
+    display.print(" minV:");
+    display.print(minHumidity, 1);
+    display.print(" maxV:");
+    display.print(maxHumidity, 1);
+    display.print(" pV:");
+    display.print(avgH, 1);
+    display.println("%");
   }
 
   display.setCursor(0, 48);
-  if (lastObstacle) {
-    display.println("Objekat detektovan!");
-  } else {
-    display.println("Nema objekta");
-  }
+  display.print("Obs:");
+  display.print(lastObstacle ? "YES " : "NO  ");
+  display.print("Cnt:");
+  display.println(obstacleCount);
 
   display.display();
 }
