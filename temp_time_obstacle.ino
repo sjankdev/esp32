@@ -16,14 +16,13 @@
 #define OBSTACLE_PIN 5
 #define BUZZER_PIN 19
 
-// WiFi credentials
+
 const char* ssid = "TiS";
 const char* password = "teodorastefan";
 
-// NTP settings
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 3600;      // Serbia GMT+1
-const int daylightOffset_sec = 3600;  // daylight saving
+const long gmtOffset_sec = 3600;      
+const int daylightOffset_sec = 3600;  
 
 DHT dht(DHTPIN, DHTTYPE);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -62,7 +61,6 @@ void setup() {
   pinMode(OBSTACLE_PIN, INPUT);
   pinMode(BUZZER_PIN, OUTPUT);
 
-  // Connect WiFi
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -77,7 +75,7 @@ void setup() {
   display.println("WiFi Connected");
   display.display();
 
-  // Start NTP
+
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   struct tm timeinfo;
