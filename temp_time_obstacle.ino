@@ -21,6 +21,7 @@
 #define OBSTACLE_PIN 5
 #define BUZZER_PIN 19
 #define LED_PIN 2
+#define BUTTON_PIN 23
 
 const char * ssid = "TiS";
 const char * password = "teodorastefan";
@@ -50,6 +51,10 @@ unsigned long sampleCount = 0;
 unsigned long obstacleCount = 0;
 bool previousObstacle = false;
 
+bool silentMode = false;
+bool lastButtonState = HIGH;
+unsigned long lastDebounceTime = 0;
+
 String getTimeString();
 void initDisplay();
 void showMessage(const char * line1,
@@ -76,6 +81,7 @@ void setup() {
   dht.begin();
 
   pinMode(OBSTACLE_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
@@ -87,6 +93,16 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
+
+  int buttonState = digitalRead(BUTTON_PIN);
+  if (buttonState == LOW && lastButtonState == HIGH && (now - lastDebounceTime) > 80) {
+    silentMode = !silentMode;
+    lastDebounceTime = now;
+    Serial.print("Button pressed, silentMode=");
+    Serial.println(silentMode ? "LED only" : "LED+buzzer");
+  }
+  lastButtonState = buttonState;
+
   if (now - lastUpdateMs >= updateEvery) {
     lastUpdateMs = now;
 
@@ -212,6 +228,13 @@ void readSensors() {
 
   if (currentObstacle && !previousObstacle) {
     obstacleCount++;
+    bool beepPlanned = (!silentMode && (obstacleCount % 3 == 1));
+    Serial.print("Obstacle #");
+    Serial.print(obstacleCount);
+    Serial.print(" silentMode=");
+    Serial.print(silentMode ? "LED" : "BUZZ");
+    Serial.print(" beep=");
+    Serial.println(beepPlanned ? "YES" : "NO");
   }
 
   lastObstacle = currentObstacle;
@@ -222,7 +245,11 @@ void handleObstacleBuzzer() {
   if (lastObstacle) {
     digitalWrite(LED_PIN, HIGH);
 
-    if (obstacleCount > 0 && (obstacleCount % 4 == 1)) {
+    if (silentMode) {
+
+      digitalWrite(BUZZER_PIN, LOW);
+    } else if (obstacleCount > 0 && (obstacleCount % 3 == 1)) {
+
       digitalWrite(BUZZER_PIN, HIGH);
     } else {
       digitalWrite(BUZZER_PIN, LOW);
@@ -277,7 +304,8 @@ void updateDisplay() {
   display.print("Obs:");
   display.print(lastObstacle ? "YES " : "NO  ");
   display.print("Cnt:");
-  display.println(obstacleCount);
+  display.print(obstacleCount);
+  display.println(silentMode ? " L" : " B");
 
   display.display();
-}
+};
