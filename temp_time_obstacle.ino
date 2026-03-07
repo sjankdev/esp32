@@ -1,13 +1,18 @@
 #include <WiFi.h>
+
 #include "time.h"
+
 #include <Wire.h>
+
 #include <Adafruit_GFX.h>
+
 #include <Adafruit_SSD1306.h>
+
 #include <DHT.h>
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_RESET -1
+#define OLED_RESET - 1
 #define SCREEN_ADDRESS 0x3C
 
 #define DHTPIN 4
@@ -15,118 +20,225 @@
 
 #define OBSTACLE_PIN 5
 #define BUZZER_PIN 19
+#define LED_PIN 2
 
+const char * ssid = "TiS";
+const char * password = "teodorastefan";
 
-const char* ssid = "TiS";
-const char* password = "teodorastefan";
-
-const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 3600;      
-const int daylightOffset_sec = 3600;  
+const char * ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 3600;
+const int daylightOffset_sec = 3600;
 
 DHT dht(DHTPIN, DHTTYPE);
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, & Wire, OLED_RESET);
 
-String getTime() {
+unsigned long lastUpdateMs = 0;
+const unsigned long updateEvery = 500;
 
-  struct tm timeinfo;
+float lastTemp = NAN;
+float lastHumidity = NAN;
+bool lastObstacle = false;
 
-  if (!getLocalTime(&timeinfo)) {
-    return "--:--:--";
-  }
+unsigned long obstacleCount = 0;
+bool previousObstacle = false;
 
-  char timeString[9];
-  strftime(timeString, sizeof(timeString), "%H:%M:%S", &timeinfo);
-
-  return String(timeString);
-}
+String getTimeString();
+void initDisplay();
+void showMessage(const char * line1,
+  const char * line2 = "");
+void connectWiFi();
+void syncTime();
+void readSensors();
+void updateDisplay();
+void handleObstacleBuzzer();
 
 void setup() {
-
   Serial.begin(115200);
 
-  Wire.begin(22,21);
+  Wire.begin(22, 21);
 
-  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
-  display.clearDisplay();
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println("SSD1306 allocation failed");
+    for (;;);
+  }
 
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
-  display.println("Connecting WiFi...");
-  display.display();
+  initDisplay();
+  showMessage("Starting...", "");
 
   dht.begin();
 
-  pinMode(OBSTACLE_PIN, INPUT);
+  pinMode(OBSTACLE_PIN, INPUT_PULLUP);
   pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
 
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("WiFi Connected");
-
-  display.clearDisplay();
-  display.setCursor(0,0);
-  display.println("WiFi Connected");
-  display.display();
-
-
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
-  struct tm timeinfo;
-
-  while(!getLocalTime(&timeinfo)){
-    Serial.println("Waiting for NTP time...");
-    delay(1000);
-  }
-
-  Serial.println("Time synced!");
+  connectWiFi();
+  syncTime();
 }
 
 void loop() {
+  unsigned long now = millis();
+  if (now - lastUpdateMs >= updateEvery) {
+    lastUpdateMs = now;
 
-  float temperatura = dht.readTemperature();
-  float vlaga = dht.readHumidity();
+    if (WiFi.status() != WL_CONNECTED) {
+      connectWiFi();
+      syncTime();
+    }
 
-  int obstacle = digitalRead(OBSTACLE_PIN);
+    readSensors();
+    handleObstacleBuzzer();
+    updateDisplay();
+  }
+}
 
+void initDisplay() {
   display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.display();
+}
 
+void showMessage(const char * line1,
+  const char * line2) {
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println(line1);
+  if (line2 && line2[0] != '\0') {
+    display.println(line2);
+  }
+  display.display();
+}
+
+void connectWiFi() {
+  showMessage("Connecting WiFi...");
+  WiFi.begin(ssid, password);
+
+  const unsigned long start = millis();
+  const unsigned long timeoutMs = 15000;
+
+  while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("WiFi connected. IP: ");
+    Serial.println(WiFi.localIP());
+    showMessage("WiFi connected", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("WiFi connect failed");
+    showMessage("WiFi FAILED", "Check network");
+  }
+}
+
+void syncTime() {
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  struct tm timeinfo;
+  int retries = 0;
+  const int maxRetries = 10;
+
+  while (!getLocalTime( & timeinfo) && retries < maxRetries) {
+    Serial.println("Waiting for NTP time...");
+    showMessage("Syncing time...", "");
+    delay(1000);
+    retries++;
+  }
+
+  if (retries < maxRetries) {
+    Serial.println("Time synced!");
+    showMessage("Time synced!", "");
+  } else {
+    Serial.println("Time sync FAILED");
+    showMessage("Time sync FAILED", "");
+  }
+}
+
+String getTimeString() {
+  struct tm timeinfo;
+  if (!getLocalTime( & timeinfo)) {
+    return String("--:--:--");
+  }
+
+  char timeString[9];
+  strftime(timeString, sizeof(timeString), "%H:%M:%S", & timeinfo);
+  return String(timeString);
+}
+
+void readSensors() {
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+
+  if (isnan(t) || isnan(h)) {
+    Serial.println("Failed to read from DHT sensor!");
+  } else {
+    lastTemp = t;
+    lastHumidity = h;
+  }
+
+  int rawObstacle = digitalRead(OBSTACLE_PIN);
+
+  bool currentObstacle = (rawObstacle == LOW);
+
+  if (currentObstacle && !previousObstacle) {
+    obstacleCount++;
+  }
+
+  lastObstacle = currentObstacle;
+  previousObstacle = currentObstacle;
+}
+
+void handleObstacleBuzzer() {
+  if (lastObstacle) {
+    digitalWrite(LED_PIN, HIGH);
+
+    if (obstacleCount > 0 && (obstacleCount % 4 == 1)) {
+      digitalWrite(BUZZER_PIN, HIGH);
+    } else {
+      digitalWrite(BUZZER_PIN, LOW);
+    }
+  } else {
+    digitalWrite(BUZZER_PIN, LOW);
+    digitalWrite(LED_PIN, LOW);
+  }
+}
+
+void updateDisplay() {
+  display.clearDisplay();
   display.setTextSize(1);
 
-  display.setCursor(0,0);
+  display.setCursor(0, 0);
   display.print("Time: ");
-  display.println(getTime());
+  display.println(getTimeString());
 
-  display.setCursor(0,20);
+  display.setCursor(0, 16);
   display.print("Temp: ");
-  display.print(temperatura);
-  display.println(" C");
-
-  display.setCursor(0,35);
-  display.print("Vlaga: ");
-  display.print(vlaga);
-  display.println(" %");
-
-  if (obstacle == LOW) {
-
-    display.setCursor(0,55);
-    display.println("Objekat detektovan!");
-
-    digitalWrite(BUZZER_PIN, HIGH);
-
+  if (isnan(lastTemp)) {
+    display.println("--.- C");
   } else {
+    display.print(lastTemp, 1);
+    display.println(" C");
+  }
 
-    digitalWrite(BUZZER_PIN, LOW);
+  display.setCursor(0, 32);
+  display.print("Vlaga: ");
+  if (isnan(lastHumidity)) {
+    display.println("--.- %");
+  } else {
+    display.print(lastHumidity, 1);
+    display.println(" %");
+  }
 
+  display.setCursor(0, 48);
+  if (lastObstacle) {
+    display.println("Objekat detektovan!");
+  } else {
+    display.println("Nema objekta");
   }
 
   display.display();
-
-  delay(500);
 }
