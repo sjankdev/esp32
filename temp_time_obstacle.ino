@@ -61,10 +61,19 @@ const unsigned long LONG_PRESS_MS = 1500;
 
 uint8_t currentPage = 1;
 
+const int TREND_SAMPLES = 5;
+const float TREND_DELTA = 0.2;
+float tempHistory[TREND_SAMPLES];
+float humHistory[TREND_SAMPLES];
+int trendCount = 0;
+int tempTrend = 0; // -1 = down, 0 = stable, 1 = up
+int humTrend = 0; // -1 = down, 0 = stable, 1 = up
+
 String getTimeString();
 void initDisplay();
 void showMessage(const char * line1,
   const char * line2 = "");
+char getTrendChar(int trend);
 void connectWiFi();
 void syncTime();
 void readSensors();
@@ -255,6 +264,42 @@ void readSensors() {
     }
   }
 
+  if (!isnan(t) && !isnan(h)) {
+    for (int i = TREND_SAMPLES - 1; i > 0; i--) {
+      tempHistory[i] = tempHistory[i - 1];
+      humHistory[i] = humHistory[i - 1];
+    }
+    tempHistory[0] = t;
+    humHistory[0] = h;
+    if (trendCount < TREND_SAMPLES) {
+      trendCount++;
+    }
+
+    if (trendCount >= 2) {
+      float dT = tempHistory[0] - tempHistory[trendCount - 1];
+      float dH = humHistory[0] - humHistory[trendCount - 1];
+
+      if (dT > TREND_DELTA) {
+        tempTrend = 1;
+      } else if (dT < -TREND_DELTA) {
+        tempTrend = -1;
+      } else {
+        tempTrend = 0;
+      }
+
+      if (dH > TREND_DELTA) {
+        humTrend = 1;
+      } else if (dH < -TREND_DELTA) {
+        humTrend = -1;
+      } else {
+        humTrend = 0;
+      }
+    } else {
+      tempTrend = 0;
+      humTrend = 0;
+    }
+  }
+
   int rawObstacle = digitalRead(OBSTACLE_PIN);
 
   bool currentObstacle = (rawObstacle == LOW);
@@ -272,6 +317,12 @@ void readSensors() {
 
   lastObstacle = currentObstacle;
   previousObstacle = currentObstacle;
+}
+
+char getTrendChar(int trend) {
+  if (trend > 0) return '^';
+  if (trend < 0) return 'v';
+  return '-';
 }
 
 void handleObstacleBuzzer() {
@@ -310,13 +361,16 @@ void updateDisplay() {
     } else {
       display.print(lastTemp, 1);
     }
-    display.print("C  V:");
+    display.print("C ");
+    display.print(getTrendChar(tempTrend));
+    display.print(" V:");
     if (isnan(lastHumidity)) {
       display.print("--");
     } else {
       display.print(lastHumidity, 1);
     }
-    display.println("%");
+    display.print("% ");
+    display.println(getTrendChar(humTrend));
 
     display.setCursor(0, 32);
     display.print("Obs:");
