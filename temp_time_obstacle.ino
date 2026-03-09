@@ -1,14 +1,11 @@
 #include <WiFi.h>
-
 #include "time.h"
-
 #include <Wire.h>
-
 #include <Adafruit_GFX.h>
-
 #include <Adafruit_SSD1306.h>
-
 #include <DHT.h>
+#include <WebServer.h>
+
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -28,15 +25,18 @@
 #define EXTRA_LED2_PIN 16
 #define EXTRA_LED3_PIN 17
 #define EXTRA_LED4_PIN 18
-const char* ssid = "TiS";
+
+const char* ssid     = "TiS";
 const char* password = "teodorastefan";
 
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 3600;
 const int daylightOffset_sec = 3600;
 
+
 DHT dht(DHTPIN, DHTTYPE);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+WebServer server(80);
 
 unsigned long lastUpdateMs = 0;
 const unsigned long updateEvery = 500;
@@ -58,12 +58,10 @@ bool previousObstacle = false;
 
 bool silentMode = false;
 
-
 bool lastButtonState = HIGH;
 unsigned long lastDebounceTime = 0;
 bool buttonPressed = false;
 unsigned long buttonPressStart = 0;
-
 
 bool lastExtraButtonState = HIGH;
 unsigned long lastExtraDebounceTime = 0;
@@ -105,10 +103,10 @@ int trendCount = 0;
 int tempTrend = 0;
 int humTrend = 0;
 
+
 String getTimeString();
 void initDisplay();
-void showMessage(const char* line1,
-                 const char* line2 = "");
+void showMessage(const char* line1, const char* line2 = "");
 char getTrendChar(int trend);
 const char* getComfortLabel();
 void connectWiFi();
@@ -116,6 +114,81 @@ void syncTime();
 void readSensors();
 void updateDisplay();
 void handleObstacleBuzzer();
+
+String trendToString(int trend);
+String boolToString(bool v);
+String getJsonStatus();
+void handleStatus();
+void handleRoot();
+
+
+
+String trendToString(int trend) {
+  if (trend > 0) return "up";
+  if (trend < 0) return "down";
+  return "flat";
+}
+
+String boolToString(bool v) {
+  return v ? "true" : "false";
+}
+
+String getJsonStatus() {
+  String timeStr = getTimeString();
+  String comfort = String(getComfortLabel());
+
+  float avgT = (sampleCount > 0) ? (sumTemp / sampleCount) : NAN;
+  float avgH = (sampleCount > 0) ? (sumHumidity / sampleCount) : NAN;
+
+  bool wifiOk = (WiFi.status() == WL_CONNECTED);
+
+  String json = "{";
+
+  json += "\"time\":\"" + timeStr + "\",";
+  json += "\"temperature\":" + String(isnan(lastTemp) ? 0.0f : lastTemp, 1) + ",";
+  json += "\"humidity\":" + String(isnan(lastHumidity) ? 0.0f : lastHumidity, 1) + ",";
+
+  json += "\"tempTrend\":\"" + trendToString(tempTrend) + "\",";
+  json += "\"humTrend\":\"" + trendToString(humTrend) + "\",";
+
+  json += "\"minTemp\":" + String(isnan(minTemp) ? 0.0f : minTemp, 1) + ",";
+  json += "\"maxTemp\":" + String(isnan(maxTemp) ? 0.0f : maxTemp, 1) + ",";
+  json += "\"avgTemp\":" + String(isnan(avgT) ? 0.0f : avgT, 1) + ",";
+
+  json += "\"minHumidity\":" + String(isnan(minHumidity) ? 0.0f : minHumidity, 1) + ",";
+  json += "\"maxHumidity\":" + String(isnan(maxHumidity) ? 0.0f : maxHumidity, 1) + ",";
+  json += "\"avgHumidity\":" + String(isnan(avgH) ? 0.0f : avgH, 1) + ",";
+
+  json += "\"obstacle\":" + boolToString(lastObstacle) + ",";
+  json += "\"obstacleCount\":" + String(obstacleCount) + ",";
+
+  json += "\"silentMode\":" + boolToString(silentMode) + ",";
+  json += "\"mode\":\"" + String(silentMode ? "LED" : "BUZ3") + "\",";
+
+  json += "\"page\":" + String(currentPage) + ",";
+  json += "\"rainMode\":" + boolToString(rainMode) + ",";
+  json += "\"bounceMode\":" + boolToString(bounceMode) + ",";
+  json += "\"extraLedsOn\":" + boolToString(extraLedsOn) + ",";
+
+  json += "\"comfort\":\"" + comfort + "\",";
+  json += "\"wifiConnected\":" + boolToString(wifiOk);
+
+  if (wifiOk) {
+    json += ",\"ip\":\"" + WiFi.localIP().toString() + "\"";
+  }
+
+  json += "}";
+
+  return json;
+}
+
+void handleStatus() {
+
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  String payload = getJsonStatus();
+  server.send(200, "application/json", payload);
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -159,6 +232,10 @@ void setup() {
   connectWiFi();
   syncTime();
 
+  server.on("/status", HTTP_GET, handleStatus);
+  server.begin();
+  Serial.println("HTTP server started");
+
   unsigned long now = millis();
   lastInteractionMs = now;
   lastAutoRotateMs = now;
@@ -167,6 +244,7 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
+  server.handleClient();
 
   int reading = digitalRead(BUTTON_PIN);
 
@@ -189,7 +267,6 @@ void loop() {
       buttonPressed = false;
       unsigned long pressDuration = now - buttonPressStart;
 
-
       if (pressDuration >= LONG_PRESS_MS) {
 
         currentPage++;
@@ -207,7 +284,6 @@ void loop() {
 
   lastButtonState = reading;
 
-
   int extraReading = digitalRead(EXTRA_BUTTON_PIN);
 
   if (extraReading != lastExtraButtonState) {
@@ -215,21 +291,17 @@ void loop() {
     Serial.print("Extra button state changed (raw): ");
     Serial.println(extraReading == LOW ? "LOW" : "HIGH");
 
-
     if (lastExtraButtonState == HIGH && extraReading == LOW) {
       extraPressStart = now;
     }
 
-
     if (lastExtraButtonState == LOW && extraReading == HIGH) {
       unsigned long pressDuration = now - extraPressStart;
-
 
       if (pressDuration >= EXTRA_LONG_PRESS_MS) {
         Serial.print("Extra button LONG press (");
         Serial.print(pressDuration);
         Serial.println(" ms) -> toggle bounce mode");
-
 
         extraClickPending = false;
 
@@ -294,7 +366,6 @@ void loop() {
             Serial.print("Extra LEDs now ");
             Serial.println(extraLedsOn ? "ON" : "OFF");
 
-
             extraClickPending = true;
             lastExtraClickTime = now;
           }
@@ -304,7 +375,6 @@ void loop() {
 
     lastExtraButtonState = extraReading;
   }
-
 
   if (extraClickPending && (now - lastExtraClickTime > DOUBLE_CLICK_MS)) {
     extraClickPending = false;
@@ -320,23 +390,19 @@ void loop() {
     Serial.println(extraLedsOn ? "ON" : "OFF");
   }
 
-
   if ((now - lastInteractionMs) > AUTO_ROTATE_IDLE_MS && (now - lastAutoRotateMs) > AUTO_ROTATE_INTERVAL_MS) {
     lastAutoRotateMs = now;
     currentPage++;
     if (currentPage > 4) currentPage = 1;
   }
 
-
   if (rainMode && (now - lastRainStepMs >= RAIN_STEP_MS)) {
     lastRainStepMs = now;
-
 
     digitalWrite(EXTRA_LED1_PIN, LOW);
     digitalWrite(EXTRA_LED2_PIN, LOW);
     digitalWrite(EXTRA_LED3_PIN, LOW);
     digitalWrite(EXTRA_LED4_PIN, LOW);
-
 
     switch (rainIndex) {
       case 0: digitalWrite(EXTRA_LED1_PIN, HIGH); break;
@@ -348,7 +414,6 @@ void loop() {
     rainIndex = (rainIndex + 1) % 4;
   }
 
-
   if (bounceMode && (now - lastBounceStepMs >= BOUNCE_STEP_MS)) {
     lastBounceStepMs = now;
 
@@ -357,14 +422,12 @@ void loop() {
     digitalWrite(EXTRA_LED3_PIN, LOW);
     digitalWrite(EXTRA_LED4_PIN, LOW);
 
-
     switch (bounceIndex) {
       case 0: digitalWrite(EXTRA_LED1_PIN, HIGH); break;
       case 1: digitalWrite(EXTRA_LED2_PIN, HIGH); break;
       case 2: digitalWrite(EXTRA_LED3_PIN, HIGH); break;
       case 3: digitalWrite(EXTRA_LED4_PIN, HIGH); break;
     }
-
 
     bounceIndex += bounceDir;
     if (bounceIndex >= 3) {
@@ -564,7 +627,6 @@ const char* getComfortLabel() {
   float t = lastTemp;
   float h = lastHumidity;
 
-
   if (h < 30.0 || t < 18.0) {
     return "DRY/COOL";
   } else if (h > 70.0) {
@@ -581,10 +643,8 @@ void handleObstacleBuzzer() {
     digitalWrite(LED_PIN, HIGH);
 
     if (silentMode) {
-
       digitalWrite(BUZZER_PIN, LOW);
     } else if (obstacleCount > 0 && (obstacleCount % 3 == 1)) {
-
       digitalWrite(BUZZER_PIN, HIGH);
     } else {
       digitalWrite(BUZZER_PIN, LOW);
@@ -712,7 +772,6 @@ void updateDisplay() {
     }
     display.println("%");
 
-
     const int graphTop = 24;
     const int graphBottom = 63;
     const int graphHeight = graphBottom - graphTop + 1;
@@ -730,7 +789,6 @@ void updateDisplay() {
       humBar = constrain((int)scaledH, 0, graphHeight);
     }
 
-
     display.fillRect(0, graphTop, SCREEN_WIDTH, graphHeight, BLACK);
 
     const int barWidth = 20;
@@ -744,7 +802,6 @@ void updateDisplay() {
     if (humBar > 0) {
       display.fillRect(humX, graphBottom - humBar + 1, barWidth, humBar, WHITE);
     }
-
 
     display.setCursor(tempX + 6, 56);
     display.print("T");

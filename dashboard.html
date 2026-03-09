@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ESP32 Environment Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #020617;
+      --card: #111827;
+      --accent: #38bdf8;
+      --accent2: #a855f7;
+      --danger: #f97373;
+      --ok: #22c55e;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: rgba(148, 163, 184, 0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: radial-gradient(circle at top, #1f2937 0, #020617 55%, #000 100%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .container {
+      width: 100%;
+      max-width: 800px;
+      padding: 16px;
+    }
+    .card {
+      background: linear-gradient(135deg, #020617, #111827);
+      border-radius: 20px;
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .title {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.9);
+      font-size: 0.8rem;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--ok);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+      margin-bottom: 6px;
+    }
+    .panel {
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: radial-gradient(circle at top left, rgba(56,189,248,0.15), transparent 60%),
+                  #020617;
+      border: 1px solid var(--border);
+      font-size: 0.86rem;
+    }
+    .panel-alt {
+      background: radial-gradient(circle at top right, rgba(168,85,247,0.15), transparent 60%),
+                  #020617;
+    }
+    .panel-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .big {
+      font-size: 1.4rem;
+      font-weight: 600;
+    }
+    .unit {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-left: 4px;
+    }
+    .row {
+      margin-top: 4px;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-right: 4px;
+      margin-top: 3px;
+    }
+    .ok { color: var(--ok); }
+    .bad { color: var(--danger); }
+    .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.75rem;
+    }
+    .footer {
+      margin-top: 6px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .error {
+      color: var(--danger);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <div>
+          <div class="title">ESP32 Environment &amp; Obstacle</div>
+          <div class="sub" id="subtitle">Waiting for first update...</div>
+        </div>
+        <div>
+          <div class="pill">
+            <span class="dot" id="wifiDot"></span>
+            <span id="wifiText">Connecting...</span>
+          </div>
+          <div style="margin-top:4px;" class="pill">
+            <span style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.12em; color:var(--muted);">Time</span>
+            <span class="mono" id="timeVal">--:--:--</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="panel">
+          <div class="panel-title">Temperature</div>
+          <div>
+            <span class="big" id="tempVal">--.-</span>
+            <span class="unit">°C</span>
+          </div>
+          <div class="row">
+            <span class="tag" id="tempTrend">Trend: --</span>
+          </div>
+          <div class="row" id="tempStats">No stats yet</div>
+        </div>
+
+        <div class="panel panel-alt">
+          <div class="panel-title">Humidity</div>
+          <div>
+            <span class="big" id="humVal">--.-</span>
+            <span class="unit">%</span>
+          </div>
+          <div class="row">
+            <span class="tag" id="humTrend">Trend: --</span>
+          </div>
+          <div class="row" id="humStats">No stats yet</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Obstacle / Comfort / Modes</div>
+          <div class="row">
+            Comfort:
+            <span id="comfortText">N/A</span>
+          </div>
+          <div class="row">
+            Obstacle:
+            <span id="obstacleState" class="ok">NO</span>,
+            hits: <span id="obstacleCount">0</span>
+          </div>
+          <div class="row">
+            Mode: <span id="modeText">--</span>
+          </div>
+          <div class="row">
+            LEDs: <span id="ledModes">-</span>
+          </div>
+          <div class="row">
+            ESP IP: <span class="mono" id="ipVal">-</span>
+          </div>
+          <div class="row">
+            Page: <span id="pageVal">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <span id="errorMsg"></span>
+        <span>Refresh every 1s · Source: <span class="mono">/status</span></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // CHANGE THIS to your ESP IP
+    const ESP_IP = "192.168.0.11"; // <-- put your actual ESP32 IP here
+
+    function $(id) { return document.getElementById(id); }
+
+    function statusUrl() {
+      return "http://" + ESP_IP + "/status";
+    }
+
+    function setWifi(ok) {
+      var dot = $("wifiDot");
+      var text = $("wifiText");
+      if (ok) {
+        dot.style.backgroundColor = "#22c55e";
+        text.textContent = "Online";
+      } else {
+        dot.style.backgroundColor = "#f97373";
+        text.textContent = "Offline";
+      }
+    }
+
+    function trendText(t) {
+      if (t === "up") return "Trend: ↑ up";
+      if (t === "down") return "Trend: ↓ down";
+      return "Trend: → flat";
+    }
+
+    function updateFromData(d) {
+      setWifi(d.wifiConnected === true);
+      $("errorMsg").textContent = "";
+
+      $("timeVal").textContent = d.time || "--:--:--";
+
+      if (typeof d.temperature === "number") {
+        $("tempVal").textContent = d.temperature.toFixed(1);
+        $("tempStats").textContent =
+          "min " + d.minTemp.toFixed(1) + "°  " +
+          "max " + d.maxTemp.toFixed(1) + "°  " +
+          "avg " + d.avgTemp.toFixed(1) + "°";
+      } else {
+        $("tempVal").textContent = "--.-";
+        $("tempStats").textContent = "No temperature data";
+      }
+
+      $("tempTrend").textContent = trendText(d.tempTrend || "flat");
+
+      if (typeof d.humidity === "number") {
+        $("humVal").textContent = d.humidity.toFixed(1);
+        $("humStats").textContent =
+          "min " + d.minHumidity.toFixed(1) + "%  " +
+          "max " + d.maxHumidity.toFixed(1) + "%  " +
+          "avg " + d.avgHumidity.toFixed(1) + "%";
+      } else {
+        $("humVal").textContent = "--.-";
+        $("humStats").textContent = "No humidity data";
+      }
+
+      $("humTrend").textContent = trendText(d.humTrend || "flat");
+
+      var comfort = d.comfort || "N/A";
+      $("comfortText").textContent = comfort;
+      var badComfort = comfort.indexOf("DRY") !== -1 ||
+                       comfort.indexOf("HUMID") !== -1 ||
+                       comfort.indexOf("WARM") !== -1;
+      $("comfortText").className = badComfort ? "bad" : "ok";
+
+      var obstacle = !!d.obstacle;
+      $("obstacleState").textContent = obstacle ? "YES" : "NO";
+      $("obstacleState").className = obstacle ? "bad" : "ok";
+
+      $("obstacleCount").textContent =
+        (typeof d.obstacleCount === "number") ? d.obstacleCount : 0;
+
+      var modeLabel = d.mode || (d.silentMode ? "LED" : "BUZ3");
+      $("modeText").textContent = modeLabel;
+
+      var modes = [];
+      if (d.extraLedsOn) modes.push("Extra LEDs ON");
+      if (d.rainMode) modes.push("Rain");
+      if (d.bounceMode) modes.push("Bounce");
+      if (modes.length === 0) modes.push("Idle");
+      $("ledModes").textContent = modes.join(", ");
+
+      $("pageVal").textContent = d.page || "-";
+      $("ipVal").textContent = d.ip || "-";
+
+      $("subtitle").textContent = obstacle
+        ? "Obstacle detected · buzzer/LED logic active."
+        : "No obstacle · monitoring environment.";
+    }
+
+    function fetchStatus() {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", statusUrl(), true);
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          if (xhr.status === 200) {
+            try {
+              var data = JSON.parse(xhr.responseText);
+              updateFromData(data);
+            } catch (e) {
+              $("errorMsg").textContent = "Parse error: " + e;
+              $("errorMsg").className = "error";
+            }
+          } else {
+            setWifi(false);
+            $("errorMsg").textContent = "HTTP error " + xhr.status;
+            $("errorMsg").className = "error";
+          }
+        }
+      };
+      xhr.onerror = function() {
+        setWifi(false);
+        $("errorMsg").textContent = "Cannot reach " + statusUrl();
+        $("errorMsg").className = "error";
+      };
+      xhr.send();
+    }
+
+    fetchStatus();
+    setInterval(fetchStatus, 1000);
+  </script>
+</body>
+</html>
