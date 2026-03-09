@@ -92,6 +92,11 @@ int8_t bounceDir = 1;
 
 uint8_t currentPage = 1;
 
+unsigned long lastInteractionMs = 0;
+unsigned long lastAutoRotateMs = 0;
+const unsigned long AUTO_ROTATE_IDLE_MS = 30000;
+const unsigned long AUTO_ROTATE_INTERVAL_MS = 7000;
+
 const int TREND_SAMPLES = 5;
 const float TREND_DELTA = 0.2;
 float tempHistory[TREND_SAMPLES];
@@ -105,6 +110,7 @@ void initDisplay();
 void showMessage(const char* line1,
                  const char* line2 = "");
 char getTrendChar(int trend);
+const char* getComfortLabel();
 void connectWiFi();
 void syncTime();
 void readSensors();
@@ -152,6 +158,10 @@ void setup() {
 
   connectWiFi();
   syncTime();
+
+  unsigned long now = millis();
+  lastInteractionMs = now;
+  lastAutoRotateMs = now;
 }
 
 void loop() {
@@ -162,6 +172,7 @@ void loop() {
 
   if (reading != lastButtonState) {
     lastDebounceTime = now;
+    lastInteractionMs = now;
   }
 
   if ((now - lastDebounceTime) > DEBOUNCE_MS) {
@@ -170,6 +181,7 @@ void loop() {
 
       buttonPressed = true;
       buttonPressStart = now;
+      lastInteractionMs = now;
     }
 
     if (reading == HIGH && buttonPressed) {
@@ -181,7 +193,7 @@ void loop() {
       if (pressDuration >= LONG_PRESS_MS) {
 
         currentPage++;
-        if (currentPage > 3) currentPage = 1;
+        if (currentPage > 4) currentPage = 1;
         Serial.print("Long press, page=");
         Serial.println(currentPage);
       } else {
@@ -199,6 +211,7 @@ void loop() {
   int extraReading = digitalRead(EXTRA_BUTTON_PIN);
 
   if (extraReading != lastExtraButtonState) {
+    lastInteractionMs = now;
     Serial.print("Extra button state changed (raw): ");
     Serial.println(extraReading == LOW ? "LOW" : "HIGH");
 
@@ -305,6 +318,13 @@ void loop() {
     digitalWrite(EXTRA_LED4_PIN, extraLedsOn ? HIGH : LOW);
     Serial.print("Extra LEDs now ");
     Serial.println(extraLedsOn ? "ON" : "OFF");
+  }
+
+
+  if ((now - lastInteractionMs) > AUTO_ROTATE_IDLE_MS && (now - lastAutoRotateMs) > AUTO_ROTATE_INTERVAL_MS) {
+    lastAutoRotateMs = now;
+    currentPage++;
+    if (currentPage > 4) currentPage = 1;
   }
 
 
@@ -536,6 +556,26 @@ char getTrendChar(int trend) {
   return '-';
 }
 
+const char* getComfortLabel() {
+  if (isnan(lastTemp) || isnan(lastHumidity)) {
+    return "N/A";
+  }
+
+  float t = lastTemp;
+  float h = lastHumidity;
+
+
+  if (h < 30.0 || t < 18.0) {
+    return "DRY/COOL";
+  } else if (h > 70.0) {
+    return "HUMID";
+  } else if (t > 28.0) {
+    return "WARM";
+  } else {
+    return "OK";
+  }
+}
+
 void handleObstacleBuzzer() {
   if (lastObstacle) {
     digitalWrite(LED_PIN, HIGH);
@@ -627,7 +667,7 @@ void updateDisplay() {
       display.print(avgH, 1);
       display.println("%");
     }
-  } else {
+  } else if (currentPage == 3) {
 
     display.setCursor(0, 0);
     display.println("Debug/info");
@@ -649,6 +689,68 @@ void updateDisplay() {
     } else {
       display.print("WiFi OFF");
     }
+  } else {
+
+    display.setCursor(0, 0);
+    display.print("Comfort: ");
+    display.println(getComfortLabel());
+
+    display.setCursor(0, 16);
+    display.print("T:");
+    if (isnan(lastTemp)) {
+      display.print("--");
+    } else {
+      display.print(lastTemp, 1);
+    }
+    display.print("C ");
+
+    display.print("V:");
+    if (isnan(lastHumidity)) {
+      display.print("--");
+    } else {
+      display.print(lastHumidity, 1);
+    }
+    display.println("%");
+
+
+    const int graphTop = 24;
+    const int graphBottom = 63;
+    const int graphHeight = graphBottom - graphTop + 1;
+
+    int tempBar = 0;
+    int humBar = 0;
+
+    if (!isnan(lastTemp)) {
+      long scaledT = map((long)(lastTemp * 10.0f), 0, 400, 0, graphHeight);
+      tempBar = constrain((int)scaledT, 0, graphHeight);
+    }
+
+    if (!isnan(lastHumidity)) {
+      long scaledH = map((long)(lastHumidity * 10.0f), 0, 1000, 0, graphHeight);
+      humBar = constrain((int)scaledH, 0, graphHeight);
+    }
+
+
+    display.fillRect(0, graphTop, SCREEN_WIDTH, graphHeight, BLACK);
+
+    const int barWidth = 20;
+    const int tempX = 20;
+    const int humX = 80;
+
+    if (tempBar > 0) {
+      display.fillRect(tempX, graphBottom - tempBar + 1, barWidth, tempBar, WHITE);
+    }
+
+    if (humBar > 0) {
+      display.fillRect(humX, graphBottom - humBar + 1, barWidth, humBar, WHITE);
+    }
+
+
+    display.setCursor(tempX + 6, 56);
+    display.print("T");
+
+    display.setCursor(humX + 6, 56);
+    display.print("H");
   }
 
   display.display();
