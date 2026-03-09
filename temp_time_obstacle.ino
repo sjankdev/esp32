@@ -70,8 +70,25 @@ unsigned long lastExtraDebounceTime = 0;
 const unsigned long DEBOUNCE_MS = 80;
 const unsigned long LONG_PRESS_MS = 1500;
 const unsigned long VERY_LONG_PRESS_MS = 3000;
+const unsigned long DOUBLE_CLICK_MS = 400;
+const unsigned long EXTRA_LONG_PRESS_MS = 800;
 
 bool extraLedsOn = false;
+bool rainMode = false;
+bool bounceMode = false;
+
+bool extraClickPending = false;
+unsigned long lastExtraClickTime = 0;
+unsigned long extraPressStart = 0;
+
+unsigned long lastRainStepMs = 0;
+const unsigned long RAIN_STEP_MS = 120;
+uint8_t rainIndex = 0;
+
+unsigned long lastBounceStepMs = 0;
+const unsigned long BOUNCE_STEP_MS = 120;
+int8_t bounceIndex = 0;
+int8_t bounceDir = 1;
 
 uint8_t currentPage = 1;
 
@@ -186,17 +203,157 @@ void loop() {
     Serial.println(extraReading == LOW ? "LOW" : "HIGH");
 
 
+    if (lastExtraButtonState == HIGH && extraReading == LOW) {
+      extraPressStart = now;
+    }
+
+
     if (lastExtraButtonState == LOW && extraReading == HIGH) {
-      extraLedsOn = !extraLedsOn;
-      digitalWrite(EXTRA_LED1_PIN, extraLedsOn ? HIGH : LOW);
-      digitalWrite(EXTRA_LED2_PIN, extraLedsOn ? HIGH : LOW);
-      digitalWrite(EXTRA_LED3_PIN, extraLedsOn ? HIGH : LOW);
-      digitalWrite(EXTRA_LED4_PIN, extraLedsOn ? HIGH : LOW);
-      Serial.print("Extra button click, extra LEDs=");
-      Serial.println(extraLedsOn ? "ON" : "OFF");
+      unsigned long pressDuration = now - extraPressStart;
+
+
+      if (pressDuration >= EXTRA_LONG_PRESS_MS) {
+        Serial.print("Extra button LONG press (");
+        Serial.print(pressDuration);
+        Serial.println(" ms) -> toggle bounce mode");
+
+
+        extraClickPending = false;
+
+        bounceMode = !bounceMode;
+        if (bounceMode) {
+
+          rainMode = false;
+          extraLedsOn = false;
+          bounceIndex = 0;
+          bounceDir = 1;
+          lastBounceStepMs = now;
+
+          digitalWrite(EXTRA_LED1_PIN, LOW);
+          digitalWrite(EXTRA_LED2_PIN, LOW);
+          digitalWrite(EXTRA_LED3_PIN, LOW);
+          digitalWrite(EXTRA_LED4_PIN, LOW);
+          Serial.println("Bounce (KITT) mode ON");
+        } else {
+
+          digitalWrite(EXTRA_LED1_PIN, LOW);
+          digitalWrite(EXTRA_LED2_PIN, LOW);
+          digitalWrite(EXTRA_LED3_PIN, LOW);
+          digitalWrite(EXTRA_LED4_PIN, LOW);
+          Serial.println("Bounce (KITT) mode OFF");
+        }
+      } else {
+
+        if (!extraClickPending) {
+
+          extraClickPending = true;
+          lastExtraClickTime = now;
+          Serial.println("Extra button first click (pending)...");
+        } else {
+
+          if (now - lastExtraClickTime <= DOUBLE_CLICK_MS) {
+            extraClickPending = false;
+
+            rainMode = !rainMode;
+            bounceMode = false;
+            extraLedsOn = false;
+            if (rainMode) {
+              Serial.println("Extra button DOUBLE click -> rain mode ON");
+              rainIndex = 0;
+              lastRainStepMs = now;
+            } else {
+              Serial.println("Extra button DOUBLE click -> rain mode OFF");
+              digitalWrite(EXTRA_LED1_PIN, LOW);
+              digitalWrite(EXTRA_LED2_PIN, LOW);
+              digitalWrite(EXTRA_LED3_PIN, LOW);
+              digitalWrite(EXTRA_LED4_PIN, LOW);
+            }
+          } else {
+
+            Serial.println("Extra button single click (timeout) -> toggle LEDs");
+            rainMode = false;
+            bounceMode = false;
+            extraLedsOn = !extraLedsOn;
+            digitalWrite(EXTRA_LED1_PIN, extraLedsOn ? HIGH : LOW);
+            digitalWrite(EXTRA_LED2_PIN, extraLedsOn ? HIGH : LOW);
+            digitalWrite(EXTRA_LED3_PIN, extraLedsOn ? HIGH : LOW);
+            digitalWrite(EXTRA_LED4_PIN, extraLedsOn ? HIGH : LOW);
+            Serial.print("Extra LEDs now ");
+            Serial.println(extraLedsOn ? "ON" : "OFF");
+
+
+            extraClickPending = true;
+            lastExtraClickTime = now;
+          }
+        }
+      }
     }
 
     lastExtraButtonState = extraReading;
+  }
+
+
+  if (extraClickPending && (now - lastExtraClickTime > DOUBLE_CLICK_MS)) {
+    extraClickPending = false;
+    Serial.println("Extra button single click (resolved) -> toggle LEDs");
+    rainMode = false;
+    bounceMode = false;
+    extraLedsOn = !extraLedsOn;
+    digitalWrite(EXTRA_LED1_PIN, extraLedsOn ? HIGH : LOW);
+    digitalWrite(EXTRA_LED2_PIN, extraLedsOn ? HIGH : LOW);
+    digitalWrite(EXTRA_LED3_PIN, extraLedsOn ? HIGH : LOW);
+    digitalWrite(EXTRA_LED4_PIN, extraLedsOn ? HIGH : LOW);
+    Serial.print("Extra LEDs now ");
+    Serial.println(extraLedsOn ? "ON" : "OFF");
+  }
+
+
+  if (rainMode && (now - lastRainStepMs >= RAIN_STEP_MS)) {
+    lastRainStepMs = now;
+
+
+    digitalWrite(EXTRA_LED1_PIN, LOW);
+    digitalWrite(EXTRA_LED2_PIN, LOW);
+    digitalWrite(EXTRA_LED3_PIN, LOW);
+    digitalWrite(EXTRA_LED4_PIN, LOW);
+
+
+    switch (rainIndex) {
+      case 0: digitalWrite(EXTRA_LED1_PIN, HIGH); break;
+      case 1: digitalWrite(EXTRA_LED2_PIN, HIGH); break;
+      case 2: digitalWrite(EXTRA_LED3_PIN, HIGH); break;
+      case 3: digitalWrite(EXTRA_LED4_PIN, HIGH); break;
+    }
+
+    rainIndex = (rainIndex + 1) % 4;
+  }
+
+
+  if (bounceMode && (now - lastBounceStepMs >= BOUNCE_STEP_MS)) {
+    lastBounceStepMs = now;
+
+    digitalWrite(EXTRA_LED1_PIN, LOW);
+    digitalWrite(EXTRA_LED2_PIN, LOW);
+    digitalWrite(EXTRA_LED3_PIN, LOW);
+    digitalWrite(EXTRA_LED4_PIN, LOW);
+
+
+    switch (bounceIndex) {
+      case 0: digitalWrite(EXTRA_LED1_PIN, HIGH); break;
+      case 1: digitalWrite(EXTRA_LED2_PIN, HIGH); break;
+      case 2: digitalWrite(EXTRA_LED3_PIN, HIGH); break;
+      case 3: digitalWrite(EXTRA_LED4_PIN, HIGH); break;
+    }
+
+
+    bounceIndex += bounceDir;
+    if (bounceIndex >= 3) {
+      bounceIndex = 3;
+      bounceDir = -1;
+    } else if (bounceIndex <= 0) {
+      bounceIndex = 0;
+      bounceDir = 1;
+    }
   }
 
   if (now - lastUpdateMs >= updateEvery) {
