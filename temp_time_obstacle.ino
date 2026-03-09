@@ -12,7 +12,7 @@
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_RESET - 1
+#define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3C
 
 #define DHTPIN 4
@@ -22,20 +22,21 @@
 #define BUZZER_PIN 19
 #define LED_PIN 2
 #define BUTTON_PIN 23
+#define EXTRA_BUTTON_PIN 3
 
-#define EXTRA_LED1_PIN 15       
-#define EXTRA_LED2_PIN 16      
-#define EXTRA_LED3_PIN 17      
-#define EXTRA_LED4_PIN 18     
-const char * ssid = "TiS";
-const char * password = "teodorastefan";
+#define EXTRA_LED1_PIN 15
+#define EXTRA_LED2_PIN 16
+#define EXTRA_LED3_PIN 17
+#define EXTRA_LED4_PIN 18
+const char* ssid = "TiS";
+const char* password = "teodorastefan";
 
-const char * ntpServer = "pool.ntp.org";
+const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 3600;
 const int daylightOffset_sec = 3600;
 
 DHT dht(DHTPIN, DHTTYPE);
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, & Wire, OLED_RESET);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 unsigned long lastUpdateMs = 0;
 const unsigned long updateEvery = 500;
@@ -56,13 +57,19 @@ unsigned long obstacleCount = 0;
 bool previousObstacle = false;
 
 bool silentMode = false;
+
+
 bool lastButtonState = HIGH;
 unsigned long lastDebounceTime = 0;
 bool buttonPressed = false;
 unsigned long buttonPressStart = 0;
+
+
+bool lastExtraButtonState = HIGH;
+unsigned long lastExtraDebounceTime = 0;
 const unsigned long DEBOUNCE_MS = 80;
 const unsigned long LONG_PRESS_MS = 1500;
-const unsigned long VERY_LONG_PRESS_MS = 3000; 
+const unsigned long VERY_LONG_PRESS_MS = 3000;
 
 bool extraLedsOn = false;
 
@@ -73,13 +80,13 @@ const float TREND_DELTA = 0.2;
 float tempHistory[TREND_SAMPLES];
 float humHistory[TREND_SAMPLES];
 int trendCount = 0;
-int tempTrend = 0; 
-int humTrend = 0; 
+int tempTrend = 0;
+int humTrend = 0;
 
 String getTimeString();
 void initDisplay();
-void showMessage(const char * line1,
-  const char * line2 = "");
+void showMessage(const char* line1,
+                 const char* line2 = "");
 char getTrendChar(int trend);
 void connectWiFi();
 void syncTime();
@@ -94,7 +101,8 @@ void setup() {
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println("SSD1306 allocation failed");
-    for (;;);
+    for (;;)
+      ;
   }
 
   initDisplay();
@@ -104,6 +112,7 @@ void setup() {
 
   pinMode(OBSTACLE_PIN, INPUT_PULLUP);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(EXTRA_BUTTON_PIN, INPUT_PULLUP);
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
   pinMode(EXTRA_LED1_PIN, OUTPUT);
@@ -117,12 +126,20 @@ void setup() {
   digitalWrite(EXTRA_LED3_PIN, LOW);
   digitalWrite(EXTRA_LED4_PIN, LOW);
 
+  Serial.println("Pin setup:");
+  Serial.print("  BUTTON_PIN (mode/page) on GPIO");
+  Serial.println(BUTTON_PIN);
+  Serial.print("  EXTRA_BUTTON_PIN (extra LEDs) on GPIO");
+  Serial.println(EXTRA_BUTTON_PIN);
+  Serial.println("  Waiting for button events...");
+
   connectWiFi();
   syncTime();
 }
 
 void loop() {
   unsigned long now = millis();
+
 
   int reading = digitalRead(BUTTON_PIN);
 
@@ -143,16 +160,8 @@ void loop() {
       buttonPressed = false;
       unsigned long pressDuration = now - buttonPressStart;
 
-      if (pressDuration >= VERY_LONG_PRESS_MS) {
-        
-        extraLedsOn = !extraLedsOn;
-        digitalWrite(EXTRA_LED1_PIN, extraLedsOn ? HIGH : LOW);
-        digitalWrite(EXTRA_LED2_PIN, extraLedsOn ? HIGH : LOW);
-        digitalWrite(EXTRA_LED3_PIN, extraLedsOn ? HIGH : LOW);
-        digitalWrite(EXTRA_LED4_PIN, extraLedsOn ? HIGH : LOW);
-        Serial.print("Very long press, extra LEDs=");
-        Serial.println(extraLedsOn ? "ON" : "OFF");
-      } else if (pressDuration >= LONG_PRESS_MS) {
+
+      if (pressDuration >= LONG_PRESS_MS) {
 
         currentPage++;
         if (currentPage > 3) currentPage = 1;
@@ -168,6 +177,27 @@ void loop() {
   }
 
   lastButtonState = reading;
+
+
+  int extraReading = digitalRead(EXTRA_BUTTON_PIN);
+
+  if (extraReading != lastExtraButtonState) {
+    Serial.print("Extra button state changed (raw): ");
+    Serial.println(extraReading == LOW ? "LOW" : "HIGH");
+
+
+    if (lastExtraButtonState == LOW && extraReading == HIGH) {
+      extraLedsOn = !extraLedsOn;
+      digitalWrite(EXTRA_LED1_PIN, extraLedsOn ? HIGH : LOW);
+      digitalWrite(EXTRA_LED2_PIN, extraLedsOn ? HIGH : LOW);
+      digitalWrite(EXTRA_LED3_PIN, extraLedsOn ? HIGH : LOW);
+      digitalWrite(EXTRA_LED4_PIN, extraLedsOn ? HIGH : LOW);
+      Serial.print("Extra button click, extra LEDs=");
+      Serial.println(extraLedsOn ? "ON" : "OFF");
+    }
+
+    lastExtraButtonState = extraReading;
+  }
 
   if (now - lastUpdateMs >= updateEvery) {
     lastUpdateMs = now;
@@ -191,8 +221,8 @@ void initDisplay() {
   display.display();
 }
 
-void showMessage(const char * line1,
-  const char * line2) {
+void showMessage(const char* line1,
+                 const char* line2) {
   display.clearDisplay();
   display.setCursor(0, 0);
   display.println(line1);
@@ -232,7 +262,7 @@ void syncTime() {
   int retries = 0;
   const int maxRetries = 10;
 
-  while (!getLocalTime( & timeinfo) && retries < maxRetries) {
+  while (!getLocalTime(&timeinfo) && retries < maxRetries) {
     Serial.println("Waiting for NTP time...");
     showMessage("Syncing time...", "");
     delay(1000);
@@ -250,12 +280,12 @@ void syncTime() {
 
 String getTimeString() {
   struct tm timeinfo;
-  if (!getLocalTime( & timeinfo)) {
+  if (!getLocalTime(&timeinfo)) {
     return String("--:--:--");
   }
 
   char timeString[9];
-  strftime(timeString, sizeof(timeString), "%H:%M:%S", & timeinfo);
+  strftime(timeString, sizeof(timeString), "%H:%M:%S", &timeinfo);
   return String(timeString);
 }
 
