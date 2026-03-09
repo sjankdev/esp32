@@ -26,7 +26,7 @@
 #define EXTRA_LED3_PIN 17
 #define EXTRA_LED4_PIN 18
 
-const char* ssid     = "TiS";
+const char* ssid = "TiS";
 const char* password = "teodorastefan";
 
 const char* ntpServer = "pool.ntp.org";
@@ -189,6 +189,76 @@ void handleStatus() {
   server.send(200, "application/json", payload);
 }
 
+void handleSetMode() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  if (!server.hasArg("silent")) {
+    server.send(400, "application/json", "{\"error\":\"missing silent param\"}");
+    return;
+  }
+
+  String v = server.arg("silent");
+  bool newSilent = (v == "1" || v == "true" || v == "LED");
+
+  silentMode = newSilent;
+
+  server.send(200, "application/json", getJsonStatus());
+}
+
+void handleSetLeds() {
+
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  if (!server.hasArg("mode")) {
+    server.send(400, "application/json", "{\"error\":\"missing mode param\"}");
+    return;
+  }
+
+  String mode = server.arg("mode");
+
+  if (mode == "idle") {
+    rainMode = false;
+    bounceMode = false;
+    extraLedsOn = false;
+    digitalWrite(EXTRA_LED1_PIN, LOW);
+    digitalWrite(EXTRA_LED2_PIN, LOW);
+    digitalWrite(EXTRA_LED3_PIN, LOW);
+    digitalWrite(EXTRA_LED4_PIN, LOW);
+  } else if (mode == "all_on") {
+    rainMode = false;
+    bounceMode = false;
+    extraLedsOn = true;
+    digitalWrite(EXTRA_LED1_PIN, HIGH);
+    digitalWrite(EXTRA_LED2_PIN, HIGH);
+    digitalWrite(EXTRA_LED3_PIN, HIGH);
+    digitalWrite(EXTRA_LED4_PIN, HIGH);
+  } else if (mode == "rain") {
+    rainMode = true;
+    bounceMode = false;
+    extraLedsOn = false;
+    rainIndex = 0;
+    lastRainStepMs = millis();
+    digitalWrite(EXTRA_LED1_PIN, LOW);
+    digitalWrite(EXTRA_LED2_PIN, LOW);
+    digitalWrite(EXTRA_LED3_PIN, LOW);
+    digitalWrite(EXTRA_LED4_PIN, LOW);
+  } else if (mode == "bounce") {
+    bounceMode = true;
+    rainMode = false;
+    extraLedsOn = false;
+    bounceIndex = 0;
+    bounceDir = 1;
+    lastBounceStepMs = millis();
+    digitalWrite(EXTRA_LED1_PIN, LOW);
+    digitalWrite(EXTRA_LED2_PIN, LOW);
+    digitalWrite(EXTRA_LED3_PIN, LOW);
+    digitalWrite(EXTRA_LED4_PIN, LOW);
+  } else {
+    server.send(400, "application/json", "{\"error\":\"unknown mode\"}");
+    return;
+  }
+
+  server.send(200, "application/json", getJsonStatus());
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -233,6 +303,8 @@ void setup() {
   syncTime();
 
   server.on("/status", HTTP_GET, handleStatus);
+  server.on("/set_mode", HTTP_GET, handleSetMode);
+  server.on("/set_leds", HTTP_GET, handleSetLeds);
   server.begin();
   Serial.println("HTTP server started");
 

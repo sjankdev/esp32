@@ -117,6 +117,11 @@
       color: var(--muted);
       margin-right: 4px;
       margin-top: 3px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .tag:hover {
+      background: rgba(148,163,184,0.2);
     }
     .ok { color: var(--ok); }
     .bad { color: var(--danger); }
@@ -195,10 +200,20 @@
             hits: <span id="obstacleCount">0</span>
           </div>
           <div class="row">
-            Mode: <span id="modeText">--</span>
+            Mode:
+            <span id="modeText">--</span>
+            <!-- Web kontrola za BUZ3 / LED -->
+            <span class="tag" onclick="setMode(false)">BUZ3</span>
+            <span class="tag" onclick="setMode(true)">LED</span>
           </div>
           <div class="row">
-            LEDs: <span id="ledModes">-</span>
+            LEDs:
+            <span id="ledModes">-</span>
+            <!-- Web kontrola za LED mod -->
+            <span class="tag" onclick="setLeds('idle')">Idle</span>
+            <span class="tag" onclick="setLeds('all_on')">On</span>
+            <span class="tag" onclick="setLeds('rain')">Rain</span>
+            <span class="tag" onclick="setLeds('bounce')">Bounce</span>
           </div>
           <div class="row">
             ESP IP: <span class="mono" id="ipVal">-</span>
@@ -217,8 +232,8 @@
   </div>
 
   <script>
-    // CHANGE THIS to your ESP IP
-    const ESP_IP = "192.168.0.11"; // <-- put your actual ESP32 IP here
+
+    const ESP_IP = "192.168.0.11";
 
     function $(id) { return document.getElementById(id); }
 
@@ -332,6 +347,41 @@
         setWifi(false);
         $("errorMsg").textContent = "Cannot reach " + statusUrl();
         $("errorMsg").className = "error";
+      };
+      xhr.send();
+    }
+
+    function setMode(silent) {
+      var xhr = new XMLHttpRequest();
+      var val = silent ? "1" : "0";
+      xhr.open("GET", "http://" + ESP_IP + "/set_mode?silent=" + val, true);
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            updateFromData(data);
+          } catch (e) {
+            $("errorMsg").textContent = "Parse error (setMode): " + e;
+            $("errorMsg").className = "error";
+          }
+        }
+      };
+      xhr.send();
+    }
+
+    function setLeds(mode) {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "http://" + ESP_IP + "/set_leds?mode=" + encodeURIComponent(mode), true);
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            updateFromData(data);
+          } catch (e) {
+            $("errorMsg").textContent = "Parse error (setLeds): " + e;
+            $("errorMsg").className = "error";
+          }
+        }
       };
       xhr.send();
     }
