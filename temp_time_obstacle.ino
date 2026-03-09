@@ -23,6 +23,8 @@
 #define LED_PIN 2
 #define BUTTON_PIN 23
 
+#define EXTRA_LED1_PIN 15   
+#define EXTRA_LED2_PIN RX2  
 const char * ssid = "TiS";
 const char * password = "teodorastefan";
 
@@ -58,6 +60,9 @@ bool buttonPressed = false;
 unsigned long buttonPressStart = 0;
 const unsigned long DEBOUNCE_MS = 80;
 const unsigned long LONG_PRESS_MS = 1500;
+const unsigned long VERY_LONG_PRESS_MS = 3000; 
+
+bool extraLedsOn = false;
 
 uint8_t currentPage = 1;
 
@@ -66,8 +71,8 @@ const float TREND_DELTA = 0.2;
 float tempHistory[TREND_SAMPLES];
 float humHistory[TREND_SAMPLES];
 int trendCount = 0;
-int tempTrend = 0; // -1 = down, 0 = stable, 1 = up
-int humTrend = 0; // -1 = down, 0 = stable, 1 = up
+int tempTrend = 0; 
+int humTrend = 0; 
 
 String getTimeString();
 void initDisplay();
@@ -99,8 +104,12 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
+  pinMode(EXTRA_LED1_PIN, OUTPUT);
+  pinMode(EXTRA_LED2_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
   digitalWrite(LED_PIN, LOW);
+  digitalWrite(EXTRA_LED1_PIN, LOW);
+  digitalWrite(EXTRA_LED2_PIN, LOW);
 
   connectWiFi();
   syncTime();
@@ -128,7 +137,14 @@ void loop() {
       buttonPressed = false;
       unsigned long pressDuration = now - buttonPressStart;
 
-      if (pressDuration >= LONG_PRESS_MS) {
+      if (pressDuration >= VERY_LONG_PRESS_MS) {
+        
+        extraLedsOn = !extraLedsOn;
+        digitalWrite(EXTRA_LED1_PIN, extraLedsOn ? HIGH : LOW);
+        digitalWrite(EXTRA_LED2_PIN, extraLedsOn ? HIGH : LOW);
+        Serial.print("Very long press, extra LEDs=");
+        Serial.println(extraLedsOn ? "ON" : "OFF");
+      } else if (pressDuration >= LONG_PRESS_MS) {
 
         currentPage++;
         if (currentPage > 3) currentPage = 1;
