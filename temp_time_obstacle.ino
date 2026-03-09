@@ -23,8 +23,10 @@
 #define LED_PIN 2
 #define BUTTON_PIN 23
 
-#define EXTRA_LED1_PIN 15   
-#define EXTRA_LED2_PIN RX2  
+#define EXTRA_LED1_PIN 15       
+#define EXTRA_LED2_PIN 16      
+#define EXTRA_LED3_PIN 17      
+#define EXTRA_LED4_PIN 18     
 const char * ssid = "TiS";
 const char * password = "teodorastefan";
 
@@ -106,10 +108,14 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(EXTRA_LED1_PIN, OUTPUT);
   pinMode(EXTRA_LED2_PIN, OUTPUT);
+  pinMode(EXTRA_LED3_PIN, OUTPUT);
+  pinMode(EXTRA_LED4_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
   digitalWrite(LED_PIN, LOW);
   digitalWrite(EXTRA_LED1_PIN, LOW);
   digitalWrite(EXTRA_LED2_PIN, LOW);
+  digitalWrite(EXTRA_LED3_PIN, LOW);
+  digitalWrite(EXTRA_LED4_PIN, LOW);
 
   connectWiFi();
   syncTime();
@@ -142,6 +148,8 @@ void loop() {
         extraLedsOn = !extraLedsOn;
         digitalWrite(EXTRA_LED1_PIN, extraLedsOn ? HIGH : LOW);
         digitalWrite(EXTRA_LED2_PIN, extraLedsOn ? HIGH : LOW);
+        digitalWrite(EXTRA_LED3_PIN, extraLedsOn ? HIGH : LOW);
+        digitalWrite(EXTRA_LED4_PIN, extraLedsOn ? HIGH : LOW);
         Serial.print("Very long press, extra LEDs=");
         Serial.println(extraLedsOn ? "ON" : "OFF");
       } else if (pressDuration >= LONG_PRESS_MS) {
